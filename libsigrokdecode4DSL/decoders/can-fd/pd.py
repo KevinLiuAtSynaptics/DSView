@@ -68,6 +68,7 @@ class Decoder(srd.Decoder):
         {'id': 'nominal_bitrate', 'desc': 'Nominal bitrate (bits/s)', 'default': 1000000, 'idn':'dec_can_opt_nominal_bitrate'},
         {'id': 'fast_bitrate', 'desc': 'Fast bitrate (bits/s)', 'default': 2000000, 'idn':'dec_can_opt_fast_bitrate'},
         {'id': 'sample_point', 'desc': 'Sample point (%)', 'default': 70.0, 'idn':'dec_can_opt_sample_point'},
+        {'id': 'Bosch', 'desc': 'Use Bosch CANFD Standard', 'default': False, 'idn':'dec_can_opt_bosch'},
     )
     annotations = (
         ('data', 'CAN payload data'),
@@ -234,21 +235,27 @@ class Decoder(srd.Decoder):
             self.ss_block = self.samplenum
 
             if self.fd:
-                if dlc2len(self.dlc) <= 16:
-                    self.crc_len = 27 # 17 + SBC + stuff bits
+                if self.options['Bosch']:
+                    if dlc2len(self.dlc) <= 16:
+                        self.crc_len = 22 # 17 + stuff bits
+                    else:
+                        self.crc_len = 27 # 21 + stuff bits
                 else:
-                    self.crc_len = 32 # 21 + SBC + stuff bits
+                    if dlc2len(self.dlc) <= 16:
+                        self.crc_len = 27 # 17 + stuff bits
+                    else:
+                        self.crc_len = 32 # 21 + stuff bits
                 self.putx([15, ['Fixed stuff bit: %d' % can_rx, 'FSB: %d' % can_rx, '%d' % can_rx]])
             else:
                 self.crc_len = 15
 
-        elif self.fd and bitnum == (self.last_databit + 2):
+        elif self.fd and bitnum == (self.last_databit + 2) and not self.options['Bosch']:
             self.ss_block = self.samplenum
             # stuff count start
             self.stuff_count_start = self.samplenum
 
 
-        elif self.fd and bitnum == (self.last_databit + 4):
+        elif self.fd and bitnum == (self.last_databit + 4) and not self.options['Bosch']:
 
             stuff_bits = self.bits[-3:]
 
@@ -268,7 +275,7 @@ class Decoder(srd.Decoder):
             self.ss_block = self.samplenum +int(self.bit_width)
 
 
-        elif self.fd and bitnum == (self.last_databit + 5):
+        elif self.fd and bitnum == (self.last_databit + 5) and not self.options['Bosch']:
             stuff_and_parity_bits = self.bits[-4:]
             stuff_and_parity = bitpack_msb(stuff_and_parity_bits)
             if ParityCheck(stuff_and_parity) == False:
@@ -276,8 +283,15 @@ class Decoder(srd.Decoder):
             self.putx([11,['Parity: %d' % can_rx, 'P: %d' % can_rx, '%d' % can_rx]])
             self.ss_block = self.samplenum +int(self.bit_width)
 
-        elif self.fd and bitnum > (self.last_databit + 5) and bitnum < (self.last_databit + self.crc_len):
+        elif self.fd and bitnum > (self.last_databit + 5) and bitnum < (self.last_databit + self.crc_len) and not self.options['Bosch']:
             index = bitnum - (self.last_databit + 5)
+            if((index-1)%5 == 0):
+                self.putx([15, ['Fixed stuff bit: %d' % can_rx, 'FSB: %d' % can_rx, '%d' % can_rx]])
+            if(index%5 == 0):
+                self.crc_data += self.bits[-4:]
+
+        elif self.fd and bitnum > (self.last_databit) and bitnum < (self.last_databit + self.crc_len) and self.options['Bosch']:
+            index = bitnum - (self.last_databit)
             if((index-1)%5 == 0):
                 self.putx([15, ['Fixed stuff bit: %d' % can_rx, 'FSB: %d' % can_rx, '%d' % can_rx]])
             if(index%5 == 0):

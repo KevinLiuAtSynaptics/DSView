@@ -156,6 +156,10 @@
         "text": "采样点(%d)"
     },
     {
+        "id": "dec_can_opt_bosch",
+        "text": "Bosch标准"
+    },
+    {
         "id": "dec_cec_chan_cec",
         "text": "CEC信号"
     },
